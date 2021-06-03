@@ -1,0 +1,26 @@
+### Example data collection plan ###
+
+version 1 6 2         # Set DCP version number
+command_timeout 5     # Set NGRx command ack timeout to 5 seconds
+
+# Send init_cmds.bin when init event is triggered
+init init_cmds.bin
+
+# Send region_enter_cmds.bin when entering region
+# Send region_exit_cmds.bin when leaving region
+region
+    region_enter_cmds.bin
+    region_exit_cmds.bin
+    -37.78763 172.99876    # Region point 1 lat and long
+    -37.99085 173.22966    # Region point 2 lat and long
+    -38.12074 173.22966    # Region point 3 lat and long
+    -38.09062 172.86635    # Region point 4 lat and long
+
+# Send ascending_cmds.bin when the ascending event is triggered
+ascending ascending_cmds.bin 1000
+
+# Send descending_cmds.bin when the descending event is triggered
+descending descending_cmds.bin 700
+
+# Send exit_cmds.bin when exiting DCP
+exit exit_cmds.bin
