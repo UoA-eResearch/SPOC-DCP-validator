@@ -1,8 +1,18 @@
-import sys
+import io, sys
+
+#if sys.platform.startswith( 'linux' ) :
+#    from OpenGL import GL
+
+#import ctypes
+#ctypes.cdll.LoadLibrary("libGL.so.1")
+
+import folium
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog,
                              QMessageBox, QShortcut)
-from PyQt5.QtGui import QKeySequence, QTextBlockFormat, QTextCursor, QStandardItemModel, QStandardItem
+from PyQt5.QtGui import (QKeySequence, QTextBlockFormat, QTextCursor,
+                         QStandardItemModel, QStandardItem)
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 from gui.output import Ui_MainWindow
 
@@ -32,6 +42,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         QMainWindow.__init__(self, parent=parent)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+
+        coordinate = (37.8199286, -122.4782551)
+        m = folium.Map(
+        	tiles='Stamen Terrain',
+        	zoom_start=13,
+        	location=coordinate
+        )
+
+        # save map data to data object
+        data = io.BytesIO()
+        m.save(data, close_file=False)
+
+
+        self.webView = QWebEngineView()
+        self.webView.setHtml(data.getvalue().decode())
+        self.ui.horizontalLayout_5.addWidget(self.webView)
 
         self.ui.actionload.triggered.connect(lambda: self.load_data())
         self.ui.actionsave.triggered.connect(lambda: self.save_data())
@@ -89,6 +115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tablemodel = QStandardItemModel(self)
         self.ui.tableView.setModel(self.tablemodel)
 
+
     def load_data(self):
         self.tablemodel.clear()
         try:
@@ -139,9 +166,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 line_text = line_obj.text().split('#',1)[0]
                 #print(line_text)
                 recognised_command = False
-                line_breakdown = line_text.strip().split(" ")
+                line_breakdown = line_text.strip().split()
                 line_breakdown = [estimateType(x) for x in line_breakdown]
-
                 # if "region block" validation is activated
                 if region_counter:
                     # check to make sure lines are indented
@@ -156,14 +182,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         cursor.setBlockFormat(self.highlight_format)
                         self.tablemodel.appendRow(QStandardItem("Line "+str(line)+ ': Incorrect number of arguments - expected ('+
                                                                 str(len(self.validate_info["region"]["args"][region_counter-1])) +
-                                                                ") but got ("+str(len(line_breakdown)) +")CORRECT FOR SPACES"))
+                                                                ") but got ("+str(len(line_breakdown)) +")"))
                     # check if arguments types are correct
                     elif [type(x) for x in line_breakdown] != [type(y) for y in self.validate_info["region"]["args"][region_counter-1]]:
                         cursor = QTextCursor(line_obj)
                         cursor.setBlockFormat(self.highlight_format)
                         self.tablemodel.appendRow(QStandardItem("Line "+str(line)+ ': Incorrect argument types - expected ('+
-                                                                str("INSERT HERE") +
-                                                                ") but got ("+str("INSERT HERE") +")"))
+                                        ", ".join([type(y).__name__ for y in self.validate_info["region"]["args"][region_counter-1]])+
+                                        ") but got ("+ ", ".join([type(x).__name__ for x in line_breakdown])+")"))
                     # line seems valid, remove any highlights
                     else:
                         cursor = QTextCursor(line_obj)
@@ -210,15 +236,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                             cursor.setBlockFormat(self.highlight_format)
                             self.tablemodel.appendRow(QStandardItem("Line "+str(line)+ ': Incorrect number of arguments - expected ('+
                                                                     str(len(self.validate_info["region"]["args"][region_counter-1])) +
-                                                                    ") but got ("+str(len(line_breakdown)) +")CORRECT FOR SPACES"))
+                                                                    ") but got ("+str(len(line_breakdown)) +")"))
                             break
                         # check if arguments types are correct
                         elif [type(x) for x in line_breakdown[1:]] != [type(y) for y in value["args"]]:
                             cursor = QTextCursor(line_obj)
                             cursor.setBlockFormat(self.highlight_format)
                             self.tablemodel.appendRow(QStandardItem("Line "+str(line)+ ': Incorrect argument types - expected ('+
-                                                                    str("INSERT HERE") +
-                                                                    ") but got ("+str("INSERT HERE") +")"))
+                                                      ", ".join([type(y).__name__ for y in value["args"]]) +
+                                                      ") but got ("+ ", ".join([type(x).__name__ for x in line_breakdown[1:]])+")"))
                             break
                         # line seems valid, remove any highlights
                         else:
@@ -229,7 +255,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 # "command" on line is not recognised
                 if not recognised_command:
                     # actual input on line, highlight as unknown command
-                    if line_breakdown[0]:
+                    if line_breakdown and line_breakdown[0]:
                         cursor = QTextCursor(line_obj)
                         cursor.setBlockFormat(self.highlight_format)
                         self.tablemodel.appendRow(QStandardItem("Line "+str(line)+ ": Unrecognised command"))
