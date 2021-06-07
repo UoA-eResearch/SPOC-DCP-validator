@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog,
                              QMessageBox, QShortcut)
 from PyQt5.QtGui import (QKeySequence, QTextBlockFormat, QTextCursor,
                          QStandardItemModel, QStandardItem)
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
+from shapely.geometry import Polygon
 
 from gui.output import Ui_MainWindow
 
@@ -43,21 +44,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
-        coordinate = (37.8199286, -122.4782551)
-        m = folium.Map(
-        	tiles='Stamen Terrain',
-        	zoom_start=13,
-        	location=coordinate
-        )
-
-        # save map data to data object
-        data = io.BytesIO()
-        m.save(data, close_file=False)
-
-
-        self.webView = QWebEngineView()
-        self.webView.setHtml(data.getvalue().decode())
-        self.ui.horizontalLayout_5.addWidget(self.webView)
+        # need to be initialised before the map
+        self.region_data = {}
+        self.number_of_regions = 0
+        self.plot_map()
 
         self.ui.actionload.triggered.connect(lambda: self.load_data())
         self.ui.actionsave.triggered.connect(lambda: self.save_data())
@@ -116,8 +106,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ui.tableView.setModel(self.tablemodel)
 
 
+    def plot_map(self, lat=-41):
+        try:
+            self.webView.deleteLater()
+        except:
+            pass
+        coordinate = (lat, 172)
+        self.m = folium.Map(
+        	tiles='Stamen Terrain',
+        	zoom_start=6,
+        	location=coordinate
+        )
+        if self.region_data:
+            for key, region in self.region_data.items():
+                points = []
+                #print(key)
+                for keyy, coords in region.items():
+                    #print(key, coords["lat"], coords["lon"])
+                    points.append([coords["lat"], coords["lon"]])
+                folium.Polygon(locations=points, color='#ff7800', fill=True, fill_color='#ffff00', fill_opacity=0.2).add_to(self.m)
+
+        # save map data to data object
+        self.mdata = io.BytesIO()
+        self.m.save(self.mdata, close_file=False)
+        self.webView = QWebEngineView()
+        self.webView.setHtml(self.mdata.getvalue().decode())
+        self.ui.horizontalLayout_5.addWidget(self.webView)
+
+
     def load_data(self):
         self.tablemodel.clear()
+        self.region_data = {}
+        self.number_of_regions = 0
+
         try:
             data_path, _ =QFileDialog.getOpenFileName(None, 'Open File', "./DCP_files/", '*.txt')
             dcp_file = open(data_path, "r")
@@ -157,9 +178,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def validate(self):
         self.tablemodel.clear()
+        self.region_data = {}
+        self.number_of_regions = 0
         try:
             # this will go as high as 6 before rolling back to 0
             region_counter = 0
+            region_coords = {}
             for line in range(self.ui.plainTextEdit.document().blockCount()):
                 line_obj = self.ui.plainTextEdit.document().findBlockByLineNumber(line)
 
@@ -194,8 +218,38 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     else:
                         cursor = QTextCursor(line_obj)
                         cursor.setBlockFormat(self.default_format)
+                        if region_counter > 2:
+                            region_coords[str(region_counter-2)] = {"lat":line_breakdown[0],"lon":line_breakdown[1]}
                     if region_counter > 5:
                         region_counter = 0
+                        if len(region_coords.keys()) == 4:
+
+                            # Check if this polygon overlaps with any other polygons
+                            if self.region_data:
+                                # package current region into list of tuples of points
+                                region_coords_list = []
+                                for keyy, coords in region_coords.items():
+                                    region_coords_list.append((coords["lat"], coords["lon"]))
+                                this_region_poly = Polygon(region_coords_list)
+                                # package existing regions into list of tuples of points
+                                # and check for any intersections
+                                for key, region in self.region_data.items():
+                                    points = []
+                                    for keyy, coords in region.items():
+                                        points.append((coords["lat"], coords["lon"]))
+                                    existing_region_poly = Polygon(points)
+
+                                    if this_region_poly.intersects(existing_region_poly):
+                                        for lline in [0,1,2,3]:
+                                            region_lines = self.ui.plainTextEdit.document().findBlockByLineNumber(line-lline)
+                                            cursor = QTextCursor(region_lines)
+                                            cursor.setBlockFormat(self.highlight_format)
+                                        self.tablemodel.appendRow(QStandardItem("Lines "+str(line-3)+ "-"+str(line)+
+                                                                  " : \"region\" overlaps with existing region"))
+
+                            self.region_data[str(self.number_of_regions)] = region_coords
+                            self.number_of_regions +=1
+                        region_coords = {}
                     else:
                         region_counter += 1
                     continue
@@ -293,6 +347,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.tablemodel.rowCount():
             self.tablemodel.appendRow(QStandardItem("No errors found: DCP is valid!"))
         self.ui.tableView.model().layoutChanged.emit()
+
+        if self.region_data:
+            #for key, region in self.region_data.items():
+                #for keyy, coords in region.items():
+                    #print(key, coords["lat"], coords["lon"])
+            self.plot_map()
 
 
 if __name__ == "__main__":
