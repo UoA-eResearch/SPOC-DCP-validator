@@ -80,11 +80,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                        },
             "ascending":{
                 "mandatory":True, "present":False, "unique":True,
-                "args":[str(), int()]
+                "args":[str(), int()], "value":False, "line_no":False
                        },
             "descending":{
                 "mandatory":True, "present":False, "unique":True,
-                "args":[str(), int()]
+                "args":[str(), int()], "value":False, "line_no":False
                        },
             "exit":{
                 "mandatory":True, "present":False, "unique":True,
@@ -304,6 +304,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         else:
                             cursor = QTextCursor(line_obj)
                             cursor.setBlockFormat(self.default_format)
+                            if key in ["ascending", "descending"]:
+                                self.validate_info[key]["value"] = int(line_breakdown[2])
+                                self.validate_info[key]["line_no"] = line
                             break
 
                 # "command" on line is not recognised
@@ -341,8 +344,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             msg.setWindowTitle("Error")
             msg.exec_()
 
+        if self.validate_info["ascending"]["value"] & self.validate_info["descending"]["value"]:
+            if not self.validate_info["ascending"]["value"] > self.validate_info["descending"]["value"]:
+                asc_line_no, desc_line_no = self.validate_info["ascending"]["line_no"], self.validate_info["descending"]["line_no"]
+                line_obj = self.ui.plainTextEdit.document().findBlockByLineNumber(asc_line_no)
+                cursor = QTextCursor(line_obj)
+                cursor.setBlockFormat(self.highlight_format)
+                line_obj = self.ui.plainTextEdit.document().findBlockByLineNumber(desc_line_no)
+                cursor = QTextCursor(line_obj)
+                cursor.setBlockFormat(self.highlight_format)
+                self.tablemodel.appendRow(QStandardItem("Lines "+str(asc_line_no)+ " and "+str(desc_line_no)+
+                                            ": \"Ascending\" value must be larger than \"Descending\" value"))
+
         for key, value in self.validate_info.items():
             self.validate_info[key]["present"] = False
+            if key in ["ascending","descending"]:
+                self.validate_info[key]["value"] = False
+                self.validate_info[key]["line_no"] = False
+
         #self.tablemodel.appendRow(QStandardItem("BLAH BLAH"))
         if not self.tablemodel.rowCount():
             self.tablemodel.appendRow(QStandardItem("No errors found: DCP is valid!"))
